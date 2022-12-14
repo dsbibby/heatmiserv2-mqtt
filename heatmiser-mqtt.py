@@ -9,8 +9,11 @@ from itertools import chain
 from paho.mqtt import client as mqtt_client
 import random
 
+
 hm_task = None
 config = None
+mqtt = None
+
 
 """ Generate a range from a hyphonated,comma seperated
 string of numbers: e.g. 1,2,5-7,9
@@ -24,14 +27,15 @@ def rangeString(commaString):
 
 def hm_device_updated(device, param_name, value):
     log('info', f"HM Device Updated - ID: {device.id}, {param_name} = {value}")
+    mqtt.publish(f"{config['MQTT']['pub_topic']}/{device.id}/{param_name}", value)
 
 
-def connect_mqtt():
+def connect_mqtt(client_id, broker, port, username, password):
     def on_connect(client, userdata, flags, rc):
         if rc == 0:
-            print("Connected to MQTT Broker!")
+            log('info', "Connected to MQTT Broker!")
         else:
-            print("Failed to connect, return code %d\n", rc)
+            log('warn', f"Failed to connect, return code {rc}")
     # Set Connecting Client ID
     client = mqtt_client.Client(client_id)
     client.username_pw_set(username, password)
@@ -40,10 +44,14 @@ def connect_mqtt():
     return client
 
 
-async def mqtt_monitor():
-    log('info', 'MQTT Started')
-    await asyncio.sleep(15)
-    log('info', 'MQTT End')
+def handle_mqtt_message(client, userdata, msg):
+    log('info', f'Received `{msg.payload.decode()}` from `{msg.topic}` topic')
+
+ 
+#async def mqtt_monitor():
+#    log('info', 'MQTT Started')
+#    await asyncio.sleep(15)
+#    log('info', 'MQTT End')
 
 
 async def main():
@@ -65,9 +73,12 @@ async def main():
     while True:
         # Open the serial connection to the Heatmiser network and start up the monitors
         hmn = HeatmiserNetwork(serial_port, rangeString(device_ids))
+        mqtt = connect_mqtt(client_id, broker, port, username, password)
+        mqtt.on_message = handle_mqtt_message
+        mqtt.subscribe(mqtt_config['sub_topic'])
         tasks = set()
         tasks.add(asyncio.create_task(hmn.run()))
-        tasks.add(asyncio.create_task(mqtt_monitor()))
+        tasks.add(asyncio.create_task(mqtt.loop_forever()))
         # Monitor tasks
         ended = False
         while not ended:
@@ -78,6 +89,7 @@ async def main():
 
         # At least one of the tasks has ended. Close the rest cleanly
         hmn.close()
+        mqtt.disconnect()
         for task in tasks:
             if task.done():
                 continue
