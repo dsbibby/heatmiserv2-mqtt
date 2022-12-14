@@ -1,0 +1,3 @@
+[submodule "heatmiser-serial-v2"]
+	path = heatmiser-serial-v2
+	url = https://github.com/dsbibby/heatmiser-serial-v2.git
