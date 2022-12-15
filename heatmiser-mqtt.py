@@ -26,8 +26,10 @@ def rangeString(commaString):
 
 
 def hm_device_updated(device, param_name, value):
+    global mqtt
     log('info', f"HM Device Updated - ID: {device.id}, {param_name} = {value}")
-    mqtt.publish(f"{config['MQTT']['pub_topic']}/{device.id}/{param_name}", value)
+    if mqtt is not None:
+        mqtt.publish(f"{config['MQTT']['pub_topic']}/{device.id}/{param_name}", str(value))
 
 
 def connect_mqtt(client_id, broker, port, username, password):
@@ -48,13 +50,21 @@ def handle_mqtt_message(client, userdata, msg):
     log('info', f'Received `{msg.payload.decode()}` from `{msg.topic}` topic')
 
  
-#async def mqtt_monitor():
-#    log('info', 'MQTT Started')
+async def mqtt_monitor():
+    log('info', 'MQTT Started')
 #    await asyncio.sleep(15)
-#    log('info', 'MQTT End')
+    global mqtt
+    while True:
+        mqtt.loop()
+        await asyncio.sleep(1)
+        log('debug', f'MQTT State: {mqtt._state}')
+        if not mqtt.is_connected():
+            break
+    log('info', 'MQTT End')
 
 
 async def main():
+    global mqtt
     HeatmiserDevice.on_param_change = hm_device_updated
     try:
         hm_config = config['Heatmiser']
@@ -62,7 +72,7 @@ async def main():
         device_ids = hm_config['device_ids']
         mqtt_config = config['MQTT']
         broker = mqtt_config['broker']
-        port = mqtt_config['port']
+        port = int(mqtt_config['port'])
         username = mqtt_config['username']
         password = mqtt_config['password']
     except KeyError as e:
@@ -78,7 +88,7 @@ async def main():
         mqtt.subscribe(mqtt_config['sub_topic'])
         tasks = set()
         tasks.add(asyncio.create_task(hmn.run()))
-        tasks.add(asyncio.create_task(mqtt.loop_forever()))
+        tasks.add(asyncio.create_task(mqtt_monitor()))
         # Monitor tasks
         ended = False
         while not ended:
