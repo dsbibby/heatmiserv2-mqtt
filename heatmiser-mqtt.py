@@ -22,10 +22,11 @@ BASE_TOPIC = None
 hm_entity_id = None
 heatmiser.logging.LOG_LEVEL = 1
 
-""" Generate a range from a hyphonated,comma seperated
-string of numbers: e.g. 1,2,5-7,9
-"""
+
 def rangeString(commaString):
+    """ Generate a range from a hyphonated,comma seperated
+    string of numbers: e.g. 1,2,5-7,9
+    """
     def hyphenRange(hyphenString):
         x = [int(x) for x in hyphenString.split('-')]
         return range(x[0], x[-1]+1)
@@ -69,7 +70,7 @@ def hm_advertise_device(device):
 
 def hm_device_updated(device, param_name, value):
     global MQTT
-    log('debug1', f"HM Device Updated - ID: {device.id}, {param_name} = {value}")
+    log('debug', f"HM Device Updated - ID: {device.id}, {param_name} = {value}")
     if MQTT is not None:
         property = param_name
         if param_name == "enabled":
