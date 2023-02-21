@@ -1,5 +1,6 @@
 #!/usr/bin/env python3.9
 
+import ast
 import asyncio
 import random
 import re
@@ -20,6 +21,7 @@ CONFIG = None
 MQTT = None
 BASE_TOPIC = None
 hm_entity_id = None
+hmn = None
 heatmiser.logging.LOG_LEVEL = 1
 
 
@@ -50,10 +52,11 @@ def hm_advertise_device(device):
         "max_temp": 35,
         "current_temperature_topic": "~/room_temp/state",
         "mode_state_topic": "~/mode/state",
+        "mode_command_topic": "~/mode/set",
         "temperature_state_topic": "~/set_temp/state",
         "temperature_command_topic": "~/set_temp/set",
         "action_topic": "~/heating_state/state",
-        "power_command_topic": "~/enabled/set",
+        #"power_command_topic": "~/enabled/set",
         "payload_on": True,
         "payload_off": False,
         "device": {
@@ -104,7 +107,29 @@ def connect_mqtt(client_id, broker, port, username, password):
 
 
 def handle_mqtt_message(client, userdata, msg):
-    log('info', f'Received `{msg.payload.decode()}` from `{msg.topic}` topic')
+    if msg.topic.startswith(BASE_TOPIC):
+        log('info', f'Received `{msg.payload.decode()}` from `{msg.topic}` topic')
+        device_id, param, _ = msg.topic[len(BASE_TOPIC) + 1:].split("/")
+        val = msg.payload.decode()
+        device = hmn.device(int(device_id))
+        
+        if param == "mode":
+            if val == "off":
+                param = "enabled"
+                val = False
+            else:
+                device.enabled = True
+                param = "frost_mode"
+                val = False if val == "heat" else True
+        else:
+            val = ast.literal_eval(val)
+        if isinstance(val, float):
+            val = int(val)
+        log('debug', device_id, param)
+        
+        if device:
+            log('debug', device)
+            asyncio.create_task(device._send_param_update(param, val))
 
 
 async def mqtt_monitor():
@@ -122,7 +147,7 @@ async def mqtt_monitor():
 
 
 async def main():
-    global MQTT, BASE_TOPIC, hm_entity_id
+    global MQTT, BASE_TOPIC, hm_entity_id, hmn
 
     HeatmiserDevice.on_param_change = hm_device_updated
 
