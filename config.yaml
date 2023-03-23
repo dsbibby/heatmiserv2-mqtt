@@ -1,6 +1,6 @@
 heatmiser:
   serial_port: socket://192.168.100.243:1024
-  device_ids: 1-10
+  device_ids: 1-9
   device_names:
     1: Living Room
     2: Kitchen
@@ -17,4 +17,4 @@ mqtt:
   port: 1883
   username: admin
   password: admin
-  topic: homeassistant
+  topic: heatmiser

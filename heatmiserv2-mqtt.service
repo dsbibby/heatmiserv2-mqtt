@@ -1,0 +1,24 @@
+[Unit]
+Description=Heatmiser v2 MQTT Bridge
+Documentation=https://www.github.com/dsbibby/heatmiserv2-mqtt/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Environment=PYTHONUNBUFFERED=1
+
+User=heatmiserv2-mqtt
+Group=heatmiserv2-mqtt
+
+WorkingDirectory=/home/pi/heatmiserv2-mqtt
+ExecStart=/usr/bin/python3 /home/pi/heatmiserv2-mqtt/heatmiser-mqtt.py
+
+SuccessExitStatus=0 143
+RestartSec=5
+Restart=on-failure
+TimeoutStopSec=120
+
+LimitNOFILE=102642
+
+[Install]
+WantedBy=multi-user.target

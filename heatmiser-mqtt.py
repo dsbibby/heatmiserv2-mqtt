@@ -19,6 +19,7 @@ import heatmiser.logging
 HM_TASK = None
 CONFIG = None
 MQTT = None
+DISCOVERY_TOPIC = "homeassistant"
 BASE_TOPIC = None
 hm_entity_id = None
 hmn = None
@@ -42,39 +43,113 @@ def hm_advertise_device(device):
         name = CONFIG['heatmiser']['device_names'][device.id]
     else:
         name = f"Heatmiser {device.TYPE_STR} {device.id}"
-
-    payload = {
-        "~": f"{BASE_TOPIC}/{device.id}",
+    
+    DEVICE_TOPIC = f"{BASE_TOPIC}/{hm_entity_id}/{device.id}"
+        
+    parent_device = {
+        "identifiers": [ f"{hm_entity_id}_{device.id}"],
+        "manufacturer": "Heatmiser",
+        "model": device.TYPE_STR,
         "name": name,
-        "unique_id": f"{hm_entity_id}-{device.id}",
-        "modes": ["off", "heat", "cool"],
-        "min_temp": 5,
-        "max_temp": 35,
-        "current_temperature_topic": "~/room_temp/state",
-        "mode_state_topic": "~/mode/state",
-        "mode_command_topic": "~/mode/set",
-        "temperature_state_topic": "~/set_temp/state",
-        "temperature_command_topic": "~/set_temp/set",
-        "action_topic": "~/heating_state/state",
-        #"power_command_topic": "~/enabled/set",
-        "payload_on": True,
-        "payload_off": False,
-        "device": {
-            "identifiers": [hm_entity_id],
-            "manufacturer": "Heatmiser",
-            "model": "UH1",
-            "name": "Heatmiser UH1"
-        }
+        "via_device": "Heatmiser UH1"
     }
-    log('debug1', f"{BASE_TOPIC}/{device.id}/config -> {json.dumps(payload)}")
-    MQTT.publish(f"{BASE_TOPIC}/{device.id}/config", json.dumps(payload))
-    MQTT.subscribe(f"{BASE_TOPIC}/{device.id}/+/set")
+    
+    payloads = [
+        {
+            "type": "climate",
+            "data": {
+                "~": DEVICE_TOPIC,
+                "name": f"{name} Thermostat",
+                "unique_id": f"stat_{hm_entity_id}_{device.id}",
+                "modes": ["off", "heat", "cool"],
+                "min_temp": 5,
+                "max_temp": 35,
+                "current_temperature_topic": "~/room_temp/state",
+                "mode_state_topic": "~/mode/state",
+                "mode_command_topic": "~/mode/set",
+                "temperature_state_topic": "~/set_temp/state",
+                "temperature_command_topic": "~/set_temp/set",
+                "action_topic": "~/heating_state/state",
+                #"power_command_topic": "~/enabled/set",
+                "payload_on": "True",
+                "payload_off": "False",
+                "device": parent_device
+            }
+        },
+        {
+            "type": "switch",
+            "data":{
+                "~": DEVICE_TOPIC,
+                "name": f"{name} Lock",
+                "unique_id": f"lock_{hm_entity_id}_{device.id}",
+                "command_topic": "~/lock_state/set",
+                "state_topic": "~/lock_state/state",
+                "payload_on": "True",
+                "payload_off": "False",
+                "icon": "mdi:lock",
+                "device": parent_device
+            }
+        },
+        {
+            "type": "sensor",
+            "data":{
+                "~": DEVICE_TOPIC,
+                "name": f"{name} Time",
+                "unique_id": f"time_{hm_entity_id}_{device.id}",
+                "state_topic": "~/datetime/state",
+                "value_template": '{{ value | int | timestamp_custom("%a %H:%M") }}',
+                "icon": "mdi:clock",
+                "device": parent_device
+            }
+        }
+    ]
+    
+    if device.TYPE_STR == 'PRTHW':
+        payloads.append({
+            "type": "switch",
+            "data":{
+                "~": DEVICE_TOPIC,
+                "name": f"{name} Manual HW",
+                "unique_id": f"manual_hw_{hm_entity_id}_{device.id}",
+                "command_topic": "~/manual_hw_state/set",
+                "state_topic": "~/manual_hw_state/state",
+                "payload_on": "True",
+                "payload_off": "False",
+                "icon": "mdi:heat-wave",
+                "device": parent_device
+            }
+        })
+        payloads.append({
+            "type": "binary_sensor",
+            "data":{
+                "~": DEVICE_TOPIC,
+                "name": f"{name} HW State",
+                "unique_id": f"hw_{hm_entity_id}_{device.id}",
+                "state_topic": "~/hw_state/state",
+                "payload_on": "True",
+                "payload_off": "False",
+                "icon": "mdi:heat-wave",
+                "device": parent_device
+            }
+        })
+    
+    for payload in payloads:
+        uid = payload["data"]["unique_id"]
+        component = payload["type"]
+        if len(payload["data"]) == 1:
+            data = {}
+        else:
+            data = payload["data"]
+        log('debug1', f'{DISCOVERY_TOPIC}/{component}/{uid}/config -> {json.dumps(data)}')
+        MQTT.publish(f'{DISCOVERY_TOPIC}/{component}/{uid}/config', json.dumps(data), retain=True)
+    MQTT.subscribe(f'{DEVICE_TOPIC}/+/set')
 
 
 def hm_device_updated(device, param_name, value):
     global MQTT
-    log('debug', f"HM Device Updated - ID: {device.id}, {param_name} = {value}")
+    log('info', f"HM Device Updated - ID: {device.id}, {param_name} = {value}")
     if MQTT is not None:
+        component = "climate"
         property = param_name
         if param_name == "enabled":
             property = "mode"
@@ -89,7 +164,7 @@ def hm_device_updated(device, param_name, value):
             value = "heating" if value else "idle"
         elif param_name == "datetime":
             value = value.timestamp()
-        MQTT.publish(f"{BASE_TOPIC}/{device.id}/{property}/state", value)
+        MQTT.publish(f"{BASE_TOPIC}/{hm_entity_id}/{device.id}/{property}/state", value)
 
 
 def connect_mqtt(client_id, broker, port, username, password):
@@ -107,9 +182,10 @@ def connect_mqtt(client_id, broker, port, username, password):
 
 
 def handle_mqtt_message(client, userdata, msg):
+    
     if msg.topic.startswith(BASE_TOPIC):
-        log('info', f'Received `{msg.payload.decode()}` from `{msg.topic}` topic')
-        device_id, param, _ = msg.topic[len(BASE_TOPIC) + 1:].split("/")
+        log('debug', f'Received `{msg.payload.decode()}` from `{msg.topic}` topic')
+        rx_entity_id, device_id, param, _ = msg.topic[len(BASE_TOPIC) + 1:].split("/")
         val = msg.payload.decode()
         device = hmn.device(int(device_id))
         
@@ -125,10 +201,8 @@ def handle_mqtt_message(client, userdata, msg):
             val = ast.literal_eval(val)
         if isinstance(val, float):
             val = int(val)
-        log('debug', device_id, param)
         
         if device:
-            log('debug', device)
             asyncio.create_task(device._send_param_update(param, val))
 
 
@@ -154,7 +228,7 @@ async def main():
     try:
         hm_config = CONFIG['heatmiser']
         serial_port = hm_config['serial_port']
-        device_ids = hm_config['device_ids']
+        device_ids = str(hm_config['device_ids'])
         mqtt_config = CONFIG['mqtt']
         broker = mqtt_config.get('broker', '127.0.0.1')
         port = int(mqtt_config.get('port', 1883))
@@ -165,8 +239,8 @@ async def main():
         sys.exit()
 
     client_id = f'heatmiser-mqtt-{random.randint(0, 1000)}'
-    hm_entity_id = re.sub("[^a-zA-Z0-9_-]", "", serial_port)
-    BASE_TOPIC = f"{mqtt_config['topic']}/climate/{hm_entity_id}"
+    hm_entity_id = re.sub("[^a-zA-Z0-9_-]", "", broker)
+    BASE_TOPIC = f"{mqtt_config['topic']}"
 
     while True:
         # Open the serial connection to the Heatmiser network and start up the monitors
