@@ -164,7 +164,7 @@ def hm_device_updated(device, param_name, value):
             value = "heating" if value else "idle"
         elif param_name == "datetime":
             value = value.timestamp()
-        MQTT.publish(f"{BASE_TOPIC}/{hm_entity_id}/{device.id}/{property}/state", value)
+        MQTT.publish(f"{BASE_TOPIC}/{hm_entity_id}/{device.id}/{property}/state", value, retain=True)
 
 
 def connect_mqtt(client_id, broker, port, username, password):
