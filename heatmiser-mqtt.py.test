@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+
+#import paho.mqtt.client as mqtt_client
+
+#print(dir(mqtt_client))
+
+import pkg_resources
+print(pkg_resources.get_distribution("paho-mqtt").version)

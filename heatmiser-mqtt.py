@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.9
+#!/usr/bin/env python3
 
 import ast
 import asyncio
@@ -10,7 +10,7 @@ import yaml
 from itertools import chain
 from configparser import ConfigParser
 from datetime import datetime
-from paho.mqtt import client as mqtt_client
+import paho.mqtt.client as mqtt_client
 from heatmiser.network import HeatmiserNetwork
 from heatmiser.device import HeatmiserDevice
 from heatmiser.logging import log
@@ -168,13 +168,13 @@ def hm_device_updated(device, param_name, value):
 
 
 def connect_mqtt(client_id, broker, port, username, password):
-    def on_connect(client, userdata, flags, rc):
-        if rc == 0:
+    def on_connect(client, userdata, flags, reason_code, properties):
+        if reason_code == 0:
             log('info', "Connected to MQTT Broker!")
         else:
-            log('warn', f"Failed to connect, return code {rc}")
+            log('warn', f"Failed to connect, return code {reason_code}")
     # Set Connecting Client ID
-    client = mqtt_client.Client(client_id)
+    client = mqtt_client.Client(mqtt_client.CallbackAPIVersion.VERSION2, client_id)
     client.username_pw_set(username, password)
     client.on_connect = on_connect
     client.connect(broker, port)
@@ -222,7 +222,8 @@ async def mqtt_monitor():
 
 async def main():
     global MQTT, BASE_TOPIC, hm_entity_id, hmn
-
+    
+    dir(mqtt_client)
     HeatmiserDevice.on_param_change = hm_device_updated
 
     try:
